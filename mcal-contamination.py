@@ -18,13 +18,20 @@ def make_shape_cuts(cat, snr=[10,100], flags=0, size_ratio=0.5):
 
   return shape_cut
 
-hsc_fname = 'hsc-sxds.fits'
-gold_fname = 'sxds.y3_gold_2_2.fits'
-mcal_fname = 'sxds_metacal_unsheared_Y3_mastercat_v2_6_20_18_subsampled.fits'
+extended_class_coadd_list = [0, 1, 2, 3]
+cmap_list = ['Blues', 'Oranges', 'Greens', 'Reds']
+extended_class_coadd_names = {'0': 'High confidence stars',
+                              '1': 'Candidate stars',
+                              '2': 'Mostly galaxies',
+                              '3': 'High confidence galaxies'}
 
-hsc_gold_match_fname = 'sxds.hsc_gold_matches.fits'
-mcal_gold_match_fname = 'sxds.mcal_gold_matches.fits'
-mcal_hsc_gold_match_fname = 'sxds.hsc_mcal_gold_matches.fits'
+hsc_fname = 'data-subsampled/sxds.hsc.fits'
+gold_fname = 'data-subsampled/sxds.y3_gold_2_2.fits'
+mcal_fname = 'data-subsampled/sxds.metacal_unsheared_Y3_mastercat_v2_6_20_18_subsampled.fits'
+
+hsc_gold_match_fname = 'data-subsampled/sxds.hsc_gold_matches.fits'
+mcal_gold_match_fname = 'data-subsampled/sxds.mcal_gold_matches.fits'
+mcal_hsc_gold_match_fname = 'data-subsampled/sxds.hsc_mcal_gold_matches.fits'
 
 hsc = Table.read(hsc_fname)
 gold = Table.read(gold_fname)
@@ -60,10 +67,11 @@ star_spread_cut = np.less(np.abs(mcal_gold_matches['SPREAD_MODEL_I'] + (5./3.)*m
 gal_spread_cut = ~star_spread_cut
 
 # hsc star cuts to mcal-hsc-gold
-# need to recalculate shape cuts!
 star_hsc_cut = mcal_hsc_gold_matches['iclassification_extendedness']==0
 gal_hsc_cut = ~star_hsc_cut
-R11_hsc_cut = np.less(mcal_hsc_gold_matches['R11'], 3.)*np.greater(mcal_hsc_gold_matches['R11'], -3)
+
+R11_gold_cut = np.less(mcal_gold_matches['R11'], 3.)*np.greater(mcal_gold_matches['R11'], -3)*(mcal_gold_matches['flags']==0)
+R11_hsc_cut = np.less(mcal_hsc_gold_matches['R11'], 3.)*np.greater(mcal_hsc_gold_matches['R11'], -3)*(mcal_hsc_gold_matches['flags']==0)
 
 # need to think about completeness across this
 N_mcal = len(mcal)
@@ -77,61 +85,88 @@ N_mcal_hsc_gold = len(mcal_hsc_gold_matches)
 N_shape = np.sum(shape_mcal_gold_cut)
 N_shape_hsc = np.sum(shape_mcal_hsc_gold_cut)
 N_hsc_shape_stars = np.sum(star_hsc_cut*shape_mcal_hsc_gold_cut)
+N_hsc_shape_gal = np.sum(gal_hsc_cut*shape_mcal_hsc_gold_cut)
 N_spread_shape_stars = np.sum(star_spread_cut*shape_mcal_gold_cut)
 
-print(N_mcal, N_gold, N_hsc)
-print(N_mcal_gold, N_hsc_gold, N_mcal_hsc_gold)
+N_high_shape_stars = np.sum(shape_mcal_gold_cut*(mcal_gold_matches['EXTENDED_CLASS_COADD']==0))
+N_cand_shape_stars = np.sum(shape_mcal_gold_cut*(mcal_gold_matches['EXTENDED_CLASS_COADD']==1))
 
-print(N_shape, N_hsc_shape_stars, N_spread_shape_stars)
-print(N_shape, N_hsc_shape_stars/N_shape, N_spread_shape_stars/N_shape)
+#print(N_mcal, N_gold, N_hsc)
+#print(N_mcal_gold, N_hsc_gold, N_mcal_hsc_gold)
 
-print('HSC contamination: {0:.3f}\\%'.format(100*N_hsc_shape_stars/N_shape))
-print('Y1Spreadmodel contamination: {0:.3f}\\%'.format(100*N_spread_shape_stars/N_shape))
+#print(N_shape, N_hsc_shape_stars, N_spread_shape_stars)
+#print(N_shape, N_hsc_shape_stars/N_shape, N_spread_shape_stars/N_shape)
+
+print('HSC contamination: {0:.2f}%'.format(100*N_hsc_shape_stars/N_shape))
+print('Y1Spreadmodel contamination: {0:.2f}%'.format(100*N_spread_shape_stars/N_shape))
+
+print('HSC Star <R>: {0}'.format(np.mean(mcal_hsc_gold_matches['R11'][R11_hsc_cut*shape_mcal_hsc_gold_cut*star_hsc_cut])))
+print('HSC Star std(R): {0}'.format(np.std(mcal_hsc_gold_matches['R11'][R11_hsc_cut*shape_mcal_hsc_gold_cut*star_hsc_cut])))
+
+print('HSC Galaxy <R>: {0}'.format(np.mean(mcal_hsc_gold_matches['R11'][R11_hsc_cut*shape_mcal_hsc_gold_cut*gal_hsc_cut])))
+print('HSC Galaxy std(R): {0}'.format(np.std(mcal_hsc_gold_matches['R11'][R11_hsc_cut*shape_mcal_hsc_gold_cut*gal_hsc_cut])))
+
+m_hsc = (N_hsc_shape_stars / N_hsc_shape_gal)*(np.mean(mcal_hsc_gold_matches['R11'][R11_hsc_cut*shape_mcal_hsc_gold_cut*star_hsc_cut]) / np.mean(mcal_hsc_gold_matches['R11'][R11_hsc_cut*shape_mcal_hsc_gold_cut*gal_hsc_cut]))
+
+print('m from HSC stars = {0:.5f}'.format(m_hsc))
 
 plt.figure(1, figsize=(2*4.5, 3.75))
 plt.subplot(121)
 plt.title('Galaxies')
-plt.hist2d(mcal_gold_matches['MAG_AUTO_I'][gal_spread_cut], mcal_gold_matches['SPREAD_MODEL_I'][gal_spread_cut], range=[[18, 25],[-0.02, 0.05]], bins=50, cmap='Blues')
-plt.xlabel('MAG AUTO I')
-plt.ylabel('SPREAD MODEL I')
-plt.subplot(122)
-plt.title('Stars')
-plt.hist2d(mcal_gold_matches['MAG_AUTO_I'][star_spread_cut], mcal_gold_matches['SPREAD_MODEL_I'][star_spread_cut], range=[[18, 25],[-0.02, 0.05]], bins=50, cmap='Oranges')
-plt.xlabel('MAG AUTO I')
-#plt.ylabel('SPREAD MODEL I')
-plt.suptitle('Y1 Spread Model')
-plt.savefig('plots/stargal-y1spreadmodel.png', dpi=300, bbox_inches='tight')
-
-plt.figure(2, figsize=(2*4.5, 3.75))
-plt.subplot(121)
-plt.title('Galaxies')
 plt.hist2d(mcal_hsc_gold_matches['MAG_AUTO_I'][gal_hsc_cut], mcal_hsc_gold_matches['SPREAD_MODEL_I'][gal_hsc_cut], range=[[18, 25],[-0.02, 0.05]], bins=50, cmap='Blues')
-plt.xlabel('MAG AUTO I')
-plt.ylabel('SPREAD MODEL I')
+plt.xlabel('MAG\_AUTO\_I')
+plt.ylabel('SPREAD\_MODEL\_I')
 plt.subplot(122)
 plt.title('Stars')
 plt.hist2d(mcal_hsc_gold_matches['MAG_AUTO_I'][star_hsc_cut], mcal_hsc_gold_matches['SPREAD_MODEL_I'][star_hsc_cut], range=[[18, 25],[-0.02, 0.05]], bins=50, cmap='Oranges')
-plt.xlabel('MAG AUTO I')
+plt.xlabel('MAG\_AUTO\_I')
 #plt.ylabel('SPREAD MODEL I')
-plt.suptitle('HSC Extendedness')
+plt.suptitle('HSC \\textsc{iclassification\_extendedness}')
 plt.savefig('plots/stargal-hsc.png', dpi=300, bbox_inches='tight')
 
-R11_gold_cut = np.less(mcal_gold_matches['R11'], 3.)*np.greater(mcal_gold_matches['R11'], -3)*(mcal_gold_matches['flags']==0)
-R11_hsc_cut = np.less(mcal_hsc_gold_matches['R11'], 3.)*np.greater(mcal_hsc_gold_matches['R11'], -3)*(mcal_hsc_gold_matches['flags']==0)
+plt.figure(2, figsize=(4*4.5, 3.75))
+for iext, extended_class_coadd in enumerate(extended_class_coadd_list):
+  plt.subplot(1,len(extended_class_coadd_list),iext+1)
+  plt.title(extended_class_coadd_names[str(extended_class_coadd)])
+  plt.hist2d(mcal_gold_matches['MAG_AUTO_I'][mcal_gold_matches['EXTENDED_CLASS_COADD']==extended_class_coadd], mcal_gold_matches['SPREAD_MODEL_I'][mcal_gold_matches['EXTENDED_CLASS_COADD']==extended_class_coadd], range=[[18, 25],[-0.02, 0.05]], bins=50, cmap=cmap_list[iext])
+  plt.xlabel('MAG\_AUTO\_I')
+  if iext==0:
+    plt.ylabel('SPREAD\_MODEL\_I')
+plt.suptitle('Gold \\textsc{EXTENDED\_CLASS\_COADD}')
+plt.savefig('plots/stargal-y3extendedness.png', dpi=300, bbox_inches='tight')
 
-plt.figure(7, figsize=(2*4.5, 3.75))
-plt.subplot(121)
-plt.hist(mcal_gold_matches['R11'][R11_gold_cut*shape_mcal_gold_cut], bins=50, histtype='step', normed=True, label='MCAL Shape Objects')
-plt.hist(mcal_hsc_gold_matches['R11'][R11_hsc_cut*shape_mcal_hsc_gold_cut*star_hsc_cut], bins=50, histtype='step', normed=True, label='MCAL Shape, HSC Stars')
-plt.hist(mcal_hsc_gold_matches['R11'][R11_hsc_cut*shape_mcal_hsc_gold_cut*gal_hsc_cut], bins=50, histtype='step', normed=True, label='MCAL Shape, HSC Galaxies')
+plt.figure(3, figsize=(3*4.5, 3.75))
+for iext, extended_class_coadd in enumerate(extended_class_coadd_list):
+  class_name = extended_class_coadd_names[str(extended_class_coadd)]
+  if class_name.endswith('stars'):
+    plt.subplot(131)
+  else:
+    plt.subplot(132)
+  ext_class_cut = mcal_gold_matches['EXTENDED_CLASS_COADD']==extended_class_coadd
+  plt.hist(mcal_gold_matches['R11'][R11_gold_cut*ext_class_cut],  bins=50, histtype='step', normed=True, label=class_name)
+  plt.xlabel('Shear Response $R_{11}$')
+
+plt.subplot(131)
+plt.title('Stars')
+plt.hist(mcal_hsc_gold_matches['R11'][R11_hsc_cut*star_hsc_cut], bins=50, histtype='step', normed=True, label='HSC Stars')
+plt.legend(fontsize='xx-small', ncol=1, loc='upper left')
+plt.ylabel('Normalised counts')
 plt.xlim([-3,3])
-plt.xlabel('R11')
-plt.legend(loc='upper left', fontsize='x-small')
-plt.subplot(122)
-plt.hist(mcal_gold_matches['R11'][R11_gold_cut*shape_mcal_gold_cut], bins=50, histtype='step', normed=True, label='MCAL Shape Objects')
-plt.hist(mcal_hsc_gold_matches['R11'][R11_hsc_cut*star_hsc_cut], bins=50, histtype='step', normed=True, label='All HSC Stars')
-plt.hist(mcal_hsc_gold_matches['R11'][R11_hsc_cut*gal_hsc_cut], bins=50, histtype='step', normed=True, label='All HSC Galaxies')
+plt.subplot(132)
+plt.title('Galaxies')
+plt.hist(mcal_hsc_gold_matches['R11'][R11_hsc_cut*gal_hsc_cut], bins=50, histtype='step', normed=True, label='HSC Galaxies')
+plt.hist(mcal_gold_matches['R11'][R11_gold_cut*shape_mcal_gold_cut], bins=50, histtype='step', normed=True, label='Mcal Shape objects')
+plt.xlabel('Shear Response $R_{11}$')
+plt.legend(fontsize='xx-small', ncol=1, loc='upper left')
 plt.xlim([-3,3])
-plt.xlabel('R11')
-plt.legend(loc='upper left', fontsize='x-small')
-plt.savefig('plots/R11-shapecut-stargal.png', dpi=300, bbox_inches='tight')
+#plt.yscale('log')
+plt.subplot(133)
+plt.title('Stars in Shape Catalogue')
+plt.hist(mcal_gold_matches['R11'][R11_gold_cut*shape_mcal_gold_cut*(mcal_gold_matches['EXTENDED_CLASS_COADD']==0)], bins=30, histtype='step', normed=True, label='{0:.2f}\% High confidence stars'.format(100*N_high_shape_stars/N_shape))
+plt.hist(mcal_hsc_gold_matches['R11'][R11_hsc_cut*shape_mcal_hsc_gold_cut*star_hsc_cut], bins=30, histtype='step', normed=True, label='{0:.2f}\% HSC Stars'.format(100*N_hsc_shape_stars/N_shape))
+#plt.hist(mcal_gold_matches['R11'][R11_gold_cut*shape_mcal_gold_cut*mcal_gold_matches['EXTENDED_CLASS_COADD']==0], bins=30, histtype='step', normed=True, label='high confidence stars')
+plt.hist(mcal_gold_matches['R11'][R11_gold_cut*shape_mcal_gold_cut*(mcal_gold_matches['EXTENDED_CLASS_COADD']==1)], bins=30, histtype='step', normed=True, label='{0:.2f}\% Candidate stars'.format(100*N_cand_shape_stars/N_shape))
+plt.xlabel('Shear Response $R_{11}$')
+plt.legend(fontsize='xx-small', ncol=1, loc='upper left')
+plt.xlim([-3,3])
+plt.savefig('plots/R11-objecttype.png', dpi=300, bbox_inches='tight')
