@@ -13,7 +13,7 @@ plt.close('all') # tidy up any unshown plots
 def make_shape_cuts(cat, snr=[10,100], flags=0, size_ratio=0.5):
   flag_cut = cat['flags']==flags
   snr_cut = np.less(cat['snr'], snr[1])*np.greater(cat['snr'], snr[0])
-  size_cut = np.greater(cat['T']/cat['mcal_psf_T'], size_ratio)
+  size_cut = np.greater(cat['T']/cat['psf_T'], size_ratio)
   shape_cut = flag_cut*snr_cut*size_cut
 
   return shape_cut
@@ -90,6 +90,8 @@ N_spread_shape_stars = np.sum(star_spread_cut*shape_mcal_gold_cut)
 
 N_high_shape_stars = np.sum(shape_mcal_gold_cut*(mcal_gold_matches['EXTENDED_CLASS_COADD']==0))
 N_cand_shape_stars = np.sum(shape_mcal_gold_cut*(mcal_gold_matches['EXTENDED_CLASS_COADD']==1))
+
+print(N_shape/N_shape_hsc)
 
 #print(N_mcal, N_gold, N_hsc)
 #print(N_mcal_gold, N_hsc_gold, N_mcal_hsc_gold)
